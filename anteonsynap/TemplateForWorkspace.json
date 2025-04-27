@@ -1,0 +1,157 @@
+{
+	"$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"workspaceName": {
+			"type": "string",
+			"metadata": "Workspace name",
+			"defaultValue": "anteonsynap"
+		},
+		"anteonsynap-WorkspaceDefaultSqlServer_connectionString": {
+			"type": "secureString",
+			"metadata": "Secure string for 'connectionString' of 'anteonsynap-WorkspaceDefaultSqlServer'",
+			"defaultValue": "Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source=tcp:anteonsynap.sql.azuresynapse.net,1433;Initial Catalog=@{linkedService().DBName}"
+		},
+		"anteonsynap-WorkspaceDefaultStorage_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://newantedetlake.dfs.core.windows.net"
+		}
+	},
+	"variables": {
+		"workspaceId": "[concat('Microsoft.Synapse/workspaces/', parameters('workspaceName'))]"
+	},
+	"resources": [
+		{
+			"name": "[concat(parameters('workspaceName'), '/anteonsynap-WorkspaceDefaultSqlServer')]",
+			"type": "Microsoft.Synapse/workspaces/linkedServices",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"parameters": {
+					"DBName": {
+						"type": "String"
+					}
+				},
+				"annotations": [],
+				"type": "AzureSqlDW",
+				"typeProperties": {
+					"connectionString": "[parameters('anteonsynap-WorkspaceDefaultSqlServer_connectionString')]"
+				},
+				"connectVia": {
+					"referenceName": "AutoResolveIntegrationRuntime",
+					"type": "IntegrationRuntimeReference"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/integrationRuntimes/AutoResolveIntegrationRuntime')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/anteonsynap-WorkspaceDefaultStorage')]",
+			"type": "Microsoft.Synapse/workspaces/linkedServices",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"annotations": [],
+				"type": "AzureBlobFS",
+				"typeProperties": {
+					"url": "[parameters('anteonsynap-WorkspaceDefaultStorage_properties_typeProperties_url')]"
+				},
+				"connectVia": {
+					"referenceName": "AutoResolveIntegrationRuntime",
+					"type": "IntegrationRuntimeReference"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/integrationRuntimes/AutoResolveIntegrationRuntime')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/AutoResolveIntegrationRuntime')]",
+			"type": "Microsoft.Synapse/workspaces/integrationRuntimes",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"type": "Managed",
+				"typeProperties": {
+					"computeProperties": {
+						"location": "AutoResolve",
+						"dataFlowProperties": {
+							"computeType": "General",
+							"coreCount": 8,
+							"timeToLive": 0
+						}
+					}
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/WorkspaceSystemIdentity')]",
+			"type": "Microsoft.Synapse/workspaces/credentials",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"type": "ManagedIdentity",
+				"typeProperties": {}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/Create_Schema')]",
+			"type": "Microsoft.Synapse/workspaces/sqlscripts",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"content": {
+					"query": "CREATE SCHEMA GOLD;    --Schema  Creation for GOLD layer\n\nCREATE VIEW GOLD.Employee\nAS \nSELECT * FROM OPENROWSET(\n    BULK 'https://newantedetlake.blob.core.windows.net/silver/HumanResources/Employee/',\n    FORMAT = 'DELTA'\n) AS DL_Query\n\nCREATE VIEW GOLD.Department\nAS \nSELECT * FROM OPENROWSET(\n    BULK 'https://newantedetlake.blob.core.windows.net/silver/HumanResources/Department/',\n    FORMAT = 'DELTA'\n) AS DL_Query\n\n\nCREATE VIEW GOLD.EmployeeDepartmentHistory\nAS \nSELECT * FROM OPENROWSET(\n    BULK 'https://newantedetlake.blob.core.windows.net/silver/HumanResources/EmployeeDepartmentHistory/',\n    FORMAT = 'DELTA'\n) AS DL_Query\n\n\nCREATE VIEW GOLD.EmployeePaytHistory\nAS \nSELECT * FROM OPENROWSET(\n    BULK 'https://newantedetlake.blob.core.windows.net/silver/HumanResources/EmployeePaytHistory/',\n    FORMAT = 'DELTA'\n) AS DL_Query\n\nCREATE VIEW GOLD.Shift\nAS \nSELECT * FROM OPENROWSET(\n    BULK 'https://newantedetlake.blob.core.windows.net/silver/HumanResources/Shift/',\n    FORMAT = 'DELTA'\n) AS DL_Query\n\n\n\n\n\n\n",
+					"metadata": {
+						"language": "sql"
+					},
+					"currentConnection": {
+						"databaseName": "bebadatabase",
+						"poolName": "Built-in"
+					},
+					"resultLimit": 5000
+				},
+				"type": "SqlQuery"
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/ExternalTables')]",
+			"type": "Microsoft.Synapse/workspaces/sqlscripts",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"content": {
+					"query": "-- Set Password & create master key\n\nCREATE MASTER KEY ENCRYPTION BY PASSWORD = 'DlsCred123' --- to access the external location (ADLS)\n\n/* Create Database Scoped Credential Managed Identity \n- to authentic & allow Synapse to interact with other azure services */\n\nCREATE DATABASE SCOPED CREDENTIAL beba_onprem   -- > the first step is creating \"Credential\" &  \"Managed identity\" \nWITH \n    IDENTITY = 'Managed Identity';\n\n--3) Creating External Data Source - conn. between synapse and ADLS - 2 datasource -(silver, gold)\n\nCREATE EXTERNAL DATA SOURCE silver_layer_source           -- > silver layer data (transform data)\nWITH\n(\n    LOCATION = 'https://newantedetlake.blob.core.windows.net/silver',\n    CREDENTIAL = beba_onprem\n)\n\nCREATE EXTERNAL DATA SOURCE gold_layer_source                -- > 2nd layer for the gold layer data\nWITH\n(\n    LOCATION = 'https://newantedetlake.blob.core.windows.net/gold',\n    CREDENTIAL = beba_onprem\n)\n\n-- create a External File Format\nCREATE EXTERNAL FILE FORMAT parquet_format\nWITH\n(\n    FORMAT_TYPE = PARQUET,\n    DATA_COMPRESSION = 'org.apache.hadoop.io.compress.SnappyCodec'\n)\n\n-- create a External Table Format\n\nCREATE EXTERNAL TABLE GOLD.ext_employee_table\nWITH\n(\n    LOCATION = 'ext_employee',\n    DATA_SOURCE = gold_layer_source,\n    FILE_FORMAT = parquet_format\n) AS SELECT * FROM GOLD.Employee\n\nSELECT * FROM  GOLD.ext_employee_table\n\nCREATE EXTERNAL TABLE GOLD.ext_department\nWITH\n(\n    LOCATION = 'ext_department',\n    DATA_SOURCE = gold_layer_source,\n    FILE_FORMAT = parquet_format\n) AS SELECT * FROM GOLD.Department\n\nSELECT * FROM  GOLD.ext_department\n\nCREATE EXTERNAL TABLE GOLD.ext_empdepthist\nWITH\n(\n    LOCATION = 'ext_empdepthist',\n    DATA_SOURCE = gold_layer_source,\n    FILE_FORMAT = parquet_format\n) AS SELECT * FROM GOLD.EmployeeDepartmentHistory\n\nSELECT * FROM  GOLD.ext_empdepthist\n\nCREATE EXTERNAL TABLE GOLD.ext_emppayhist\nWITH\n(\n    LOCATION = 'ext_emppayhist',\n    DATA_SOURCE = gold_layer_source,\n    FILE_FORMAT = parquet_format\n) AS SELECT * FROM GOLD.EmployeePaytHistory\n\nSELECT * FROM GOLD.ext_emppayhist\n\n\nCREATE EXTERNAL TABLE GOLD.ext_shift\nWITH\n(\n    LOCATION = 'ext_shift',\n    DATA_SOURCE = gold_layer_source,\n    FILE_FORMAT = parquet_format\n) AS SELECT * FROM GOLD.Shift\n\nSELECT * FROM GOLD.ext_shift\n\n\n",
+					"metadata": {
+						"language": "sql"
+					},
+					"currentConnection": {
+						"databaseName": "bebadatabase",
+						"poolName": "Built-in"
+					},
+					"resultLimit": 5000
+				},
+				"type": "SqlQuery"
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/First Script')]",
+			"type": "Microsoft.Synapse/workspaces/sqlscripts",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"content": {
+					"query": "SELECT * FROM OPENROWSET(\n    BULK 'https://newantedetlake.blob.core.windows.net/silver/HumanResources/Employee/',\n    FORMAT = 'DELTA'\n) AS DL_Query",
+					"metadata": {
+						"language": "sql"
+					},
+					"currentConnection": {
+						"databaseName": "bebadatabase",
+						"poolName": "Built-in"
+					},
+					"resultLimit": 5000
+				},
+				"type": "SqlQuery"
+			},
+			"dependsOn": []
+		}
+	]
+}
