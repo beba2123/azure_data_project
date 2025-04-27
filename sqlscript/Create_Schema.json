@@ -1,0 +1,17 @@
+{
+	"name": "Create_Schema",
+	"properties": {
+		"content": {
+			"query": "CREATE SCHEMA GOLD;    --Schema  Creation for GOLD layer\n\nCREATE VIEW GOLD.Employee\nAS \nSELECT * FROM OPENROWSET(\n    BULK 'https://newantedetlake.blob.core.windows.net/silver/HumanResources/Employee/',\n    FORMAT = 'DELTA'\n) AS DL_Query\n\nCREATE VIEW GOLD.Department\nAS \nSELECT * FROM OPENROWSET(\n    BULK 'https://newantedetlake.blob.core.windows.net/silver/HumanResources/Department/',\n    FORMAT = 'DELTA'\n) AS DL_Query\n\n\nCREATE VIEW GOLD.EmployeeDepartmentHistory\nAS \nSELECT * FROM OPENROWSET(\n    BULK 'https://newantedetlake.blob.core.windows.net/silver/HumanResources/EmployeeDepartmentHistory/',\n    FORMAT = 'DELTA'\n) AS DL_Query\n\n\nCREATE VIEW GOLD.EmployeePaytHistory\nAS \nSELECT * FROM OPENROWSET(\n    BULK 'https://newantedetlake.blob.core.windows.net/silver/HumanResources/EmployeePaytHistory/',\n    FORMAT = 'DELTA'\n) AS DL_Query\n\nCREATE VIEW GOLD.Shift\nAS \nSELECT * FROM OPENROWSET(\n    BULK 'https://newantedetlake.blob.core.windows.net/silver/HumanResources/Shift/',\n    FORMAT = 'DELTA'\n) AS DL_Query\n\n\n\n\n\n\n",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "bebadatabase",
+				"poolName": "Built-in"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}

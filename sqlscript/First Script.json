@@ -1,0 +1,17 @@
+{
+	"name": "First Script",
+	"properties": {
+		"content": {
+			"query": "SELECT * FROM OPENROWSET(\n    BULK 'https://newantedetlake.blob.core.windows.net/silver/HumanResources/Employee/',\n    FORMAT = 'DELTA'\n) AS DL_Query",
+			"metadata": {
+				"language": "sql"
+			},
+			"currentConnection": {
+				"databaseName": "bebadatabase",
+				"poolName": "Built-in"
+			},
+			"resultLimit": 5000
+		},
+		"type": "SqlQuery"
+	}
+}
